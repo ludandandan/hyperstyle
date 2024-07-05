@@ -1,5 +1,12 @@
 name: hyperstyle_env
 channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/pro
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
   - conda-forge
   - defaults
 dependencies:
@@ -33,4 +40,4 @@ dependencies:
     - tensorboard==2.2.1
     - torch==1.10.0
     - torchvision==0.11.1
-prefix: ~/anaconda3/envs/hyperstyle_env
+prefix: ~/miniconda3/envs/hyperstyle_env

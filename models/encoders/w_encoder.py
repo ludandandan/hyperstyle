@@ -32,11 +32,11 @@ class WEncoder(Module):
         log_size = int(math.log(opts.output_size, 2))
         self.style_count = 2 * log_size - 2
 
-    def forward(self, x):
-        x = self.input_layer(x)
-        x = self.body(x)
-        x = self.output_pool(x)
-        x = x.view(-1, 512)
-        x = self.linear(x)
-        return x.repeat(self.style_count, 1, 1).permute(1, 0, 2)
+    def forward(self, x): #x[8,3,256,256]
+        x = self.input_layer(x) #Conv-BN-ReLU [8,64,256,256]
+        x = self.body(x) #[8,512,16,16]
+        x = self.output_pool(x)#AdaptiveAvgPool [8,512,1,1]
+        x = x.view(-1, 512)#[8,512]
+        x = self.linear(x)#EqualLinear(512,512) [8,512]
+        return x.repeat(self.style_count, 1, 1).permute(1, 0, 2) #重复18次 [8,18,512]，因为StyleGAN2中是18个style，但是这样看起来18个style是一样，看起来是在stylegan中再进行变换
 

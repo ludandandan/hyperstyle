@@ -32,5 +32,20 @@ DATASETS = {
 		'train_target_root': dataset_paths['afhq_wild_train'],
 		'test_source_root': dataset_paths['afhq_wild_test'],
 		'test_target_root': dataset_paths['afhq_wild_test']
-	}
+	},
+    	'my_hypernet': {
+		'transforms': transforms_config.EncodeTransforms,   # can define a custom transform, if desired
+		'train_source_root': dataset_paths['fs2k_train_data_source'],
+		'train_target_root': dataset_paths['fs2k_train_data_target'],
+		'test_source_root': dataset_paths['fs2k_test_data_source'],
+		'test_target_root': dataset_paths['fs2k_test_data_target'],
+	},
+	'celeba_hypernet': {
+		'transforms': transforms_config.EncodeTransforms,
+		'train_source_root': dataset_paths['celeba_train_data_source'],
+		'train_target_root': dataset_paths['celeba_train_data_target'],
+		'test_source_root': dataset_paths['celeba_test_data_source'],
+		'test_target_root': dataset_paths['celeba_test_data_target'],
+	},
+    
 }

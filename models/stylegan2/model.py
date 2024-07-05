@@ -82,7 +82,7 @@ class Blur(nn.Module):
         self.pad = pad
 
     def forward(self, input):
-        out = upfirdn2d(input, self.kernel, pad=self.pad)
+        out = upfirdn2d(input, self.kernel, pad=self.pad)#input[8,512,9,9]->out[8,512,8,8]
 
         return out
 
@@ -125,13 +125,13 @@ class EqualConv2d(nn.Module):
         )
 
 
-class EqualLinear(nn.Module):
+class EqualLinear(nn.Module):#增强的全连接层，可以实现权重缩放和可选的激活函数，样式style经过这个层后，会得到一个新的样式（这个是为了实现仿射变换）
     def __init__(
             self, in_dim, out_dim, bias=True, bias_init=0, lr_mul=1, activation=None
     ):
         super().__init__()
 
-        self.weight = nn.Parameter(torch.randn(out_dim, in_dim).div_(lr_mul))
+        self.weight = nn.Parameter(torch.randn(out_dim, in_dim).div_(lr_mul)) #全连接层的权重，[512,512]，
 
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_dim).fill_(bias_init))
@@ -144,13 +144,13 @@ class EqualLinear(nn.Module):
         self.scale = (1 / math.sqrt(in_dim)) * lr_mul
         self.lr_mul = lr_mul
 
-    def forward(self, input):
-        weight = self.weight
+    def forward(self, input):#[8,512] 这是样式style，也就是潜在编码
+        weight = self.weight #[512，512]，全连接层的权重
         if self.activation:
             out = F.linear(input, weight * self.scale)
             out = fused_leaky_relu(out, self.bias * self.lr_mul)
 
-        else:
+        else: #不激活
             out = F.linear(
                 input, weight * self.scale, bias=self.bias * self.lr_mul
             )
@@ -230,49 +230,49 @@ class ModulatedConv2d(nn.Module):
             f'upsample={self.upsample}, downsample={self.downsample})'
         )
 
-    def forward(self, input, style, weights_delta=None):
+    def forward(self, input, style, weights_delta=None):#input可以是固定输入[8,512,4,4]，也可以是上一层的输出,style是潜在编码[8,512]（所有18层都一样）
         batch, in_channel, height, width = input.shape
 
-        style = self.modulation(style).view(batch, 1, in_channel, 1, 1)
-        if weights_delta is None:
-            weight = self.scale * self.weight * style
-        else:
-            weight = self.scale * (self.weight * (1 + weights_delta) * style)
+        style = self.modulation(style).view(batch, 1, in_channel, 1, 1)#调制层是EqualLinear，其实就是一个增强的全连接层，实现仿射变换,style[8,512] -> [8,1,512,1,1](原来18个style是一样的，经过仿射变换之后就不一样啦)
+        if weights_delta is None:# 应用放射变换后的style对卷积核进行调制
+            weight = self.scale * self.weight * style#self.scale是一个数值根据输入通道数和卷积核大小不同而不同；self.weight是权重[1,512,512,3,3]一开始是随机采样的标准正态分布；style是仿射变换后的style[8,1,512,1,1],weight[8,512,512,3,3]
+        else: #当有权重增量时，权重乘以（1+增量），再使用style对卷积核（即权重）进行调制
+            weight = self.scale * (self.weight * (1 + weights_delta) * style)#self.weight[1,512,512,3,3],weights_delta[8,512,512,3,3],style[8,1,512,1,1]，weight[8,512,512,3,3]
 
-        if self.demodulate:
-            demod = torch.rsqrt(weight.pow(2).sum([2, 3, 4]) + 1e-8)
-            weight = weight * demod.view(batch, self.out_channel, 1, 1, 1)
+        if self.demodulate:#去调制，相当于对权重进行归一化
+            demod = torch.rsqrt(weight.pow(2).sum([2, 3, 4]) + 1e-8)#计算去调制因子：先计算权重的平方，然后对结果的第234维度，也就是卷积核的输入通道、宽和高，计算之后得到[batch,out_channel]，然后计算倒数平方根，demo[8,512]
+            weight = weight * demod.view(batch, self.out_channel, 1, 1, 1)#应用去调制，[1,512,512,3,3] * [8,512,1,1,1] = [8,512,512,3,3]逐元素乘法
 
-        weight = weight.view(
+        weight = weight.view( #[8,512,512,3,3] -> [8*512=4096,512,3,3]
             batch * self.out_channel, in_channel, self.kernel_size, self.kernel_size
         )
 
         if self.upsample:
-            input = input.view(1, batch * in_channel, height, width)
-            weight = weight.view(
+            input = input.view(1, batch * in_channel, height, width)#[8,512,4,4] -> [1,8*512=4096,4,4]
+            weight = weight.view( #[4096,512,3,3]->[8,512,512,3,3]
                 batch, self.out_channel, in_channel, self.kernel_size, self.kernel_size
             )
-            weight = weight.transpose(1, 2).reshape(
+            weight = weight.transpose(1, 2).reshape(#[4096,512,3,3]
                 batch * in_channel, self.out_channel, self.kernel_size, self.kernel_size
             )
-            out = F.conv_transpose2d(input, weight, padding=0, stride=2, groups=batch)
-            _, _, height, width = out.shape
-            out = out.view(batch, self.out_channel, height, width)
-            out = self.blur(out)
+            out = F.conv_transpose2d(input, weight, padding=0, stride=2, groups=batch) #应用调制和去调制后的权重进行卷积操作#转置卷积input[1.4096,4,4],weight[4096,512,3,3]，out[1,4096,9,9]
+            _, _, height, width = out.shape #[1,4096,9,9]，height=9，width=9
+            out = out.view(batch, self.out_channel, height, width)#[8,512,9,9]
+            out = self.blur(out)#[8,512,8,8]
 
         elif self.downsample:
             input = self.blur(input)
             _, _, height, width = input.shape
             input = input.view(1, batch * in_channel, height, width)
-            out = F.conv2d(input, weight, padding=0, stride=2, groups=batch)
+            out = F.conv2d(input, weight, padding=0, stride=2, groups=batch)#应用调制和去调制后的权重进行卷积操作
             _, _, height, width = out.shape
             out = out.view(batch, self.out_channel, height, width)
 
-        else:
-            input = input.view(1, batch * in_channel, height, width)
-            out = F.conv2d(input, weight, padding=self.padding, groups=batch)
-            _, _, height, width = out.shape
-            out = out.view(batch, self.out_channel, height, width)
+        else:# 不上采样也不下采样
+            input = input.view(1, batch * in_channel, height, width) #[8,512,4,4]->[1,8*512=4096,4,4]
+            out = F.conv2d(input, weight, padding=self.padding, groups=batch) #应用调制和去调制后的权重进行卷积操作#input[1,4096,4,4],weight[4096,512,3,3]，相当于输出通道数是4096，输入通道数是512，group表示使用分组卷积，out[1,4096,4,4]
+            _, _, height, width = out.shape#[1,4096,4,4]，height=4，width=4
+            out = out.view(batch, self.out_channel, height, width)#out[8,512,4,4]
 
         return out
 
@@ -288,7 +288,7 @@ class NoiseInjection(nn.Module):
             batch, _, height, width = image.shape
             noise = image.new_empty(batch, 1, height, width).normal_()
 
-        return image + self.weight * noise
+        return image + self.weight * noise #image[8,512,4,4],noise.shape[1,1,4,4],self.weight是一个数值，但是他是可学习的
 
 
 class ConstantInput(nn.Module):
@@ -333,10 +333,10 @@ class StyledConv(nn.Module):
         self.activate = FusedLeakyReLU(out_channel)
 
     def forward(self, input, style, noise=None, weights_delta=None):
-        out = self.conv(input, style, weights_delta=weights_delta)
-        out = self.noise(out, noise=noise)
+        out = self.conv(input, style, weights_delta=weights_delta)#经过调制卷积(里面包括对style进行仿射变换)，融入了style的信息 out[8,512,4,4]（这里用的是调制和解调制，而不是stylegan1中的AdaIN），第一个没有上采样，后面的是一个上采样接一个没有上采样的
+        out = self.noise(out, noise=noise) #注入噪声out[8, 512, 4, 4]
         # out = out + self.bias
-        out = self.activate(out)
+        out = self.activate(out) #[8,512,4,4]
 
         return out
 
@@ -352,13 +352,13 @@ class ToRGB(nn.Module):
         self.bias = nn.Parameter(torch.zeros(1, 3, 1, 1))
 
     def forward(self, input, style, skip=None, weights_delta=None):
-        out = self.conv(input, style, weights_delta)
-        out = out + self.bias
+        out = self.conv(input, style, weights_delta)#input[8,512,4,4],style[8,512],out[8,3,4,4]
+        out = out + self.bias#self.bias是可学习的
 
         if skip is not None:
-            skip = self.upsample(skip)
+            skip = self.upsample(skip) #[8,3,4,4]->[8,3,8,8]，把上一个toRGB的输出上采样
 
-            out = out + skip
+            out = out + skip#将上一个toRGB的输出上采样后和当前toRGB的输出相加
 
         return out
 
@@ -402,7 +402,7 @@ class Generator(nn.Module):
             1024: 16 * channel_multiplier,
         }
 
-        self.input = ConstantInput(self.channels[4])
+        self.input = ConstantInput(self.channels[4])#输入层，生成输入向量
         self.conv1 = StyledConv(
             self.channels[4], self.channels[4], 3, style_dim, blur_kernel=blur_kernel
         )
@@ -484,22 +484,22 @@ class Generator(nn.Module):
             randomize_noise=True,
             weights_deltas=None
     ):
-        total_convs = len(self.convs) + len(self.to_rgbs) + 2   # +2 for first conv and toRGB
+        total_convs = len(self.convs) + len(self.to_rgbs) + 2   # +2 for first conv and toRGB #16+8+2=26，一共26层，就是合成网络总的网络层数（不包括Mapping Network）
         if weights_deltas is None:
-            weights_deltas = [None] * total_convs
+            weights_deltas = [None] * total_convs # 每一层的权重增量先初始化为None，共26层
 
-        if not input_is_latent:
+        if not input_is_latent: #如果输入不是潜在编码，那么需要由stylegan2的mapping network得到潜在编码
             styles = [self.style(s) for s in styles]
 
         if noise is None:
             if randomize_noise:
                 noise = [None] * self.num_layers
             else:
-                noise = [
-                    getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
+                noise = [ #如果不随机噪声，那么就是用预先生成的噪声，17个噪声,[1,1,4,4],[1,1,8,8],...,[1,1,1024,1024]
+                    getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)#self.num_layers=17，就是在17层中注入噪声
                 ]
 
-        if truncation < 1:
+        if truncation < 1: #=1
             style_t = []
 
             for style in styles:
@@ -509,13 +509,13 @@ class Generator(nn.Module):
 
             styles = style_t
 
-        if len(styles) < 2:
-            inject_index = self.n_latent
+        if len(styles) < 2: #styles是一个list，[codes],codes是一个tensor[8,18,512]
+            inject_index = self.n_latent #18
 
             if styles[0].ndim < 3:
                 latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
             else:
-                latent = styles[0]
+                latent = styles[0] #[8,18,512]
 
         else:
             if inject_index is None:
@@ -526,24 +526,24 @@ class Generator(nn.Module):
 
             latent = torch.cat([latent, latent2], 1)
 
-        out = self.input(latent)
-        out = self.conv1(out, latent[:, 0], noise=noise[0], weights_delta=weights_deltas[0])
-        skip = self.to_rgb1(out, latent[:, 1], weights_delta=weights_deltas[1])
+        out = self.input(latent) #输入层，生成输入向量，在这里latent只是提供了batchsize，ConstantInput会自己生成一个[8,512,4,4]的输入向量，还是可以学习的
+        out = self.conv1(out, latent[:, 0], noise=noise[0], weights_delta=weights_deltas[0])#conv1包括调制卷积+噪声注入+激活，latent[8,18,512],latent[:, 0]是[8,512]样式,noise[0]是[1,1,4,4],weights_deltas[0]是None
+        skip = self.to_rgb1(out, latent[:, 1], weights_delta=weights_deltas[1]) #[8,3,4,4]
 
         i = 1
-        weight_idx = 2
-        for conv1, conv2, noise1, noise2, to_rgb in zip(self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs):
-            out = conv1(out, latent[:, i], noise=noise1, weights_delta=weights_deltas[weight_idx])
-            out = conv2(out, latent[:, i + 1], noise=noise2, weights_delta=weights_deltas[weight_idx + 1])
-            skip = to_rgb(out, latent[:, i + 2], skip, weights_delta=weights_deltas[weight_idx + 2])
+        weight_idx = 2 #还有16个conv和8个 toRGB，上面已经有了一个conv和一个roRGB，所以从2开始，总共是26层
+        for conv1, conv2, noise1, noise2, to_rgb in zip(self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs):#conv1是convs从第0个元素开始，每隔2个元素取一个，conv1是convs从第1个元素开始，每隔2个元素取一个，noise1是noise从第1个元素开始，每隔2个元素取一个，noise2是noise从第2个元素开始，每隔2个元素取一个
+            out = conv1(out, latent[:, i], noise=noise1, weights_delta=weights_deltas[weight_idx]) #conv1是有上采样的,[8,512,8,8]
+            out = conv2(out, latent[:, i + 1], noise=noise2, weights_delta=weights_deltas[weight_idx + 1]) #conv2是没有上采样的,[8,512,8,8]
+            skip = to_rgb(out, latent[:, i + 2], skip, weights_delta=weights_deltas[weight_idx + 2])#这里输入了上一层的输出skip[8,3,4,4]，out[8,512,8,8]，to_rgb中也经历了调制卷积，还会将上一个toRGB的输出上采样后与当前toRGB的输出相加得到输出skip[8,3,8,8]
 
             i += 2
             weight_idx += 3
 
-        image = skip
+        image = skip #[8,3,1024,1024]，重建的图像，把源图像输入到e4e的编码器w_encoder生成styles，然后通过stylegan2的生成器decoder从一个随机噪声生成图像，这里weights_deltas始终是None
 
         if return_latents:
-            return image, latent
+            return image, latent#image[8,3,1024,1024],latent[8,18,512]
         elif return_features:
             return image, out
         else:

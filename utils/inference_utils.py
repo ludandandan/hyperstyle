@@ -1,7 +1,7 @@
 import torch
 
 
-def run_inversion(inputs, net, opts, return_intermediate_results=False):
+def run_inversion(inputs, net, opts, return_intermediate_results=False):##返回两次微调stylegan2的生成器得到的重建图像，潜在编码和两次微调累积的权重增量
     y_hat, latent, weights_deltas, codes = None, None, None, None
 
     if return_intermediate_results:
@@ -11,8 +11,8 @@ def run_inversion(inputs, net, opts, return_intermediate_results=False):
     else:
         results_batch, results_latent, results_deltas = None, None, None
 
-    for iter in range(opts.n_iters_per_batch):
-        y_hat, latent, weights_deltas, codes, _ = net.forward(inputs,
+    for iter in range(opts.n_iters_per_batch): # 2次迭代
+        y_hat, latent, weights_deltas, codes, _ = net.forward(inputs, #这里的net是hyperstyle模型，input[4,3,256,256]，这里是将输入给到hyperstyle模型，然后得到模型预测的对当前输入stylegan2模型各层参数的增量，还有stylgegan2根据增量微调后得到的重建图像，这里的latent和codes是w_encoder得到的潜在编码
                                                               y_hat=y_hat,
                                                               codes=codes,
                                                               weights_deltas=weights_deltas,
@@ -38,7 +38,7 @@ def run_inversion(inputs, net, opts, return_intermediate_results=False):
 
     if return_intermediate_results:
         return results_batch, results_latent, results_deltas
-    return y_hat, latent, weights_deltas, codes
+    return y_hat, latent, weights_deltas, codes#返回两次微调stylegan2的生成器得到的重建图像，潜在编码和两次微调累积的权重增量
 
 
 def store_intermediate_results(results_batch, results_latent, results_deltas, y_hat, latent, weights_deltas):

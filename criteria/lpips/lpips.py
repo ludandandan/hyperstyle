@@ -20,16 +20,16 @@ class LPIPS(nn.Module):
         super(LPIPS, self).__init__()
 
         # pretrained network
-        self.net = get_network(net_type).to("cuda")
+        self.net = get_network(net_type).to("cuda") 
 
         # linear layers
         self.lin = LinLayers(self.net.n_channels_list).to("cuda")
         self.lin.load_state_dict(get_state_dict(net_type, version))
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
-        feat_x, feat_y = self.net(x), self.net(y)
+        feat_x, feat_y = self.net(x), self.net(y) #提取特征，5个元素的list
 
-        diff = [(fx - fy) ** 2 for fx, fy in zip(feat_x, feat_y)]
-        res = [l(d).mean((2, 3), True) for d, l in zip(diff, self.lin)]
+        diff = [(fx - fy) ** 2 for fx, fy in zip(feat_x, feat_y)]#计算特征之间的差异
+        res = [l(d).mean((2, 3), True) for d, l in zip(diff, self.lin)]#使用线性层的权重对特征之间的差异进行加权，然后求平均
 
-        return torch.sum(torch.cat(res, 0)) / x.shape[0]
+        return torch.sum(torch.cat(res, 0)) / x.shape[0]#沿着0维度进行拼接后求和，然后除以batch_size，得到平均值

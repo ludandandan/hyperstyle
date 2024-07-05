@@ -54,13 +54,13 @@ class e4e(nn.Module):
         if input_code:
             codes = x
         else:
-            codes = self.encoder(x)
+            codes = self.encoder(x)#x[4,6,256,256],由编码器ProgressiveBackboneEncoder根据输入图像和平均图像或者重建图像得到潜在编码codes[4,18,512]
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
                 codes = codes + latent
             else:
-                # first iteration is with respect to the avg latent code
+                # first iteration is with respect to the avg latent code 第一次迭代是关于平均潜在编码的
                 codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
 
         if average_code:
@@ -68,7 +68,7 @@ class e4e(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
-        images, result_latent = self.decoder([codes],
+        images, result_latent = self.decoder([codes], #经过stylegan2的生成器得到重建图像，同时也返回潜在编码codes[4,18,512]
                                              input_is_latent=input_is_latent,
                                              randomize_noise=randomize_noise,
                                              return_latents=return_latents)
@@ -79,7 +79,7 @@ class e4e(nn.Module):
         if return_latents:
             return images, result_latent
         else:
-            return images
+            return images #[1,3,256,256]
 
     def set_opts(self, opts):
         self.opts = opts

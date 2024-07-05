@@ -229,11 +229,11 @@ class ModulatedConv2d(nn.Module):
             f'upsample={self.upsample}, downsample={self.downsample})'
         )
 
-    def forward(self, input, style, weights_delta=None, input_is_stylespace=False):
+    def forward(self, input, style, weights_delta=None, input_is_stylespace=False):#input[1,512,4,4],style[1,512]
         batch, in_channel, height, width = input.shape
 
-        if not input_is_stylespace:
-            style = self.modulation(style).view(batch, 1, in_channel, 1, 1)
+        if not input_is_stylespace:#当这个不是True的时候，需要仿射变换，但是当它是True的时候，就不需要仿射变换了，直接使用style
+            style = self.modulation(style).view(batch, 1, in_channel, 1, 1)#对style进行仿射变换，变成[1,1,512,1,1]
 
         if weights_delta is None:
             weight = self.scale * self.weight * style
@@ -275,7 +275,7 @@ class ModulatedConv2d(nn.Module):
             _, _, height, width = out.shape
             out = out.view(batch, self.out_channel, height, width)
 
-        return out, style
+        return out, style#style[1,1,512,1,1]
 
 
 class NoiseInjection(nn.Module):
@@ -333,8 +333,8 @@ class StyledConv(nn.Module):
         # self.activate = ScaledLeakyReLU(0.2)
         self.activate = FusedLeakyReLU(out_channel)
 
-    def forward(self, input, style, noise=None, weights_delta=None, input_is_stylespace=False):
-        out, style = self.conv(input, style, weights_delta=weights_delta, input_is_stylespace=input_is_stylespace)
+    def forward(self, input, style, noise=None, weights_delta=None, input_is_stylespace=False):#input[1,512,4,4],style[1,512]
+        out, style = self.conv(input, style, weights_delta=weights_delta, input_is_stylespace=input_is_stylespace)#style是经过仿射变换之后的[1,1,512,1,1]
         out = self.noise(out, noise=noise)
         # out = out + self.bias
         out = self.activate(out)
@@ -511,8 +511,8 @@ class Generator(nn.Module):
             styles = style_t
 
         if input_is_stylespace:
-            latent = styles[0]
-        elif len(styles) < 2:
+            latent = styles[0] #latent是一个26层的list，每一层是[1,1,512,1,1]样子的tensor（这应该就是W+空间）
+        elif len(styles) < 2:#styles是一个list，但是只有一个元素，是[1,18,512]
             inject_index = self.n_latent
 
             if styles[0].ndim < 3:
@@ -531,20 +531,20 @@ class Generator(nn.Module):
             latent = torch.cat([latent, latent2], 1)
 
 
-        style_vector = []
+        style_vector = []#保存latent中每一个style经过仿射变换之后的结果[1,512]->[1,1,512,1,1]，共18个，18层
 
         if not input_is_stylespace:
-            out = self.input(latent)
-            out, out_style = self.conv1(out, latent[:, 0], noise=noise[0], weights_delta=weights_deltas[0])
-            style_vector.append(out_style)
+            out = self.input(latent)#latent[1,18,512],out[1,512,4,4]
+            out, out_style = self.conv1(out, latent[:, 0], noise=noise[0], weights_delta=weights_deltas[0])#lantent[:,0]是[1,512]
+            style_vector.append(out_style)#out_style是[1,1,512,1,1]，是latent[:,0]经过仿射变换之后的结果
 
             skip, out_style = self.to_rgb1(out, latent[:, 1], weights_delta=weights_deltas[1])
-            style_vector.append(out_style)
+            style_vector.append(out_style)#out_style是[1,1,512,1,1]，是latent[:,1]经过仿射变换之后的结果
 
             i = 1
-        else:
+        else:#input_is_stylespace=True就说明latent是一个26层的list，每一层是[1,1,512,1,1]样子的tensor（这应该就是W+空间）
             out = self.input(latent[0])
-            out, out_style = self.conv1(out, latent[0], noise=noise[0], weights_delta=weights_deltas[0], input_is_stylespace=input_is_stylespace)
+            out, out_style = self.conv1(out, latent[0], noise=noise[0], weights_delta=weights_deltas[0], input_is_stylespace=input_is_stylespace)#input_is_stylespace是True的时候不需要仿射变换了
             style_vector.append(out_style)
 
             skip, out_style = self.to_rgb1(out, latent[1], weights_delta=weights_deltas[1], input_is_stylespace=input_is_stylespace)
@@ -563,7 +563,7 @@ class Generator(nn.Module):
 
                 style_vector.extend([out_style1, out_style2, rgb_style])
 
-                i += 2
+                i += 2#因为latent是18，然后有26层，要重复利用
                 weight_idx += 3
 
             else:
@@ -573,13 +573,13 @@ class Generator(nn.Module):
 
                 style_vector.extend([out_style1, out_style2, rgb_style])
 
-                i += 3
+                i += 3#latent是26，不需要重复利用
                 weight_idx += 3
 
         image = skip
 
         if return_latents:
-            return image, latent, style_vector
+            return image, latent, style_vector#latent和输入的一样没有变[1,18,512],style_vector是经过一个全连接层仿射变换之后的结果，是26个元素构成的list（看起来是to_rgb层会和后面的conv1用同样的latent输入，但是由于仿射变换后不太一样）
 
         else:
             return image, None

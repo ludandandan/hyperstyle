@@ -13,6 +13,17 @@ dataset_paths = {
 
 	'afhq_wild_train': '',
 	'afhq_wild_test': '',
+    
+	'fs2k_train_data_source': '/home/ludan/dataset/FS2K_preproc/train/photo',
+    'fs2k_train_data_target': '/home/ludan/dataset/FS2K_preproc/train/sketch',
+    'fs2k_test_data_source': '/home/ludan/dataset/FS2K_preproc/test/photo',
+    'fs2k_test_data_target': '/home/ludan/dataset/FS2K_preproc/test/sketch',
+    
+	'celeba_train_data_source':'/home/ludan/code/ld/diffSketchFace_ldTest/dataset/celeba_hq_256/photo',
+	'celeba_train_data_target':'/home/ludan/code/ld/diffSketchFace_ldTest/dataset/celeba_hq_256/sketch',
+	'celeba_test_data_source':'/home/ludan/code/ld/diffSketchFace_ldTest/dataset/celeba_hq_256/photo',
+	'celeba_test_data_target':'/home/ludan/code/ld/diffSketchFace_ldTest/dataset/celeba_hq_256/sketch',
+
 
 }
 
@@ -41,7 +52,8 @@ model_paths = {
 	'stylegan_pixar': 'pretrained_models/pixar.pt',
 	'stylegan_toonify': 'pretrained_models/ffhq_cartoon_blended.pt',
 	'stylegan_sketch': 'pretrained_models/sketch.pt',
-	'stylegan_disney': 'pretrained_models/disney_princess.pt'
+	'stylegan_disney': 'pretrained_models/disney_princess.pt',
+    'e4e_w_encoder': 'pretrained_models/faces_w_encoder.pt',
 }
 
 edit_paths = {
